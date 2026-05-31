@@ -1,41 +1,66 @@
-# openclaw-feishu
+# openclaw-feishu（定制版）
 
-[![npm version](https://img.shields.io/npm/v/openclaw-feishu.svg)](https://www.npmjs.com/package/openclaw-feishu)
+让 OpenClaw AI 助手接入**飞书 / Lark**，无需公网服务器（基于飞书 WebSocket 长连接，本地运行即可）。
 
-让 OpenClaw AI 助手接入飞书，无需公网服务器。
+> 本仓库是 [`openclaw-feishu`](https://github.com/hgkdzbf6/openclaw-feishu) 官方 0.1.4 的**定制版**，
+> 在官方基础上改了**群聊回复策略**并增加了**文件 / 图片 / 富文本消息支持**。
+> 完整改动见 [MODIFICATIONS.md](./MODIFICATIONS.md)。
 
-## 特点
+---
 
-- **无需服务器** — 基于飞书 WebSocket 长连接，本地运行即可
-- **私聊 + 群聊** — 都支持，群里 @ 机器人或直接发消息
-- **图片与文件** — 收发都支持
-- **多账号** — 可配置多个飞书应用/账号
+## ✨ 这个定制版相比官方多了什么
 
-## 快速开始
+| 能力 | 官方 0.1.4 | 本定制版 |
+|------|-----------|---------|
+| 群聊回复 | 被 @ / 问号 / 求助词等智能判断 | **只在「真正 @ 到机器人本人」时回复**（更安静，不误触发） |
+| 文本消息 | ✅ | ✅ |
+| 文件消息 | ❌ | ✅ 自动下载并提取内容（txt/md/代码/csv/json… 直接读，**PDF 自动转文字**） |
+| 图片消息 | ❌ | ✅ 以占位文本传入（让 AI 知道用户发了图） |
+| 富文本(post) | ❌ | ✅ 提取其中的纯文字 |
+| 启动稳定性 | 偶发「channel exited」 | ✅ 修复：连接保活直到网关停止 |
 
-### 1. 创建飞书应用与机器人
+---
+
+## 🧩 准备工作
+
+1. 已经安装并能正常使用 **OpenClaw**（`openclaw` 命令可用）。
+2. **Node.js ≥ 20**。
+3. 一个**飞书企业自建应用**（下面第 1 步教你建）。
+
+---
+
+## 🚀 快速开始
+
+### 第 1 步：创建飞书应用与机器人
 
 1. 打开 [飞书开放平台](https://open.feishu.cn/app) → 创建**企业自建应用**
-2. 在应用中添加「**机器人**」能力
-3. **权限配置**中开启：
-   - `im:message`（发消息）
+2. 在应用里添加「**机器人**」能力
+3. 在**权限管理**中开启：
+   - `im:message`（收发消息）
    - `im:message.group_at_msg`（群聊 @ 消息）
    - `im:message.p2p_msg`（私聊消息）
-4. **事件订阅** → 添加 `im.message.receive_v1` → 选择「**使用长连接接收事件**」
-5. **版本管理** → 创建版本 → 申请上线
-6. 记下 **App ID**（形如 `cli_xxx`）和 **App Secret**
+   - `im:resource`（**读取文件/图片资源**，定制版的文件功能需要它）
+4. **事件订阅** → 添加事件 `im.message.receive_v1` → 接收方式选择「**使用长连接接收事件**」
+5. **版本管理与发布** → 创建版本 → 申请上线（应用必须是「已发布」状态，草稿态收不到消息）
+6. 记下 **App ID**（形如 `cli_xxxxxxxx`）和 **App Secret**
 
-### 2. 安装插件
+### 第 2 步：安装本插件
+
+因为这是定制版（没有发布到 npm），从本仓库安装：
 
 ```bash
-openclaw plugins install openclaw-feishu
+git clone https://github.com/karenliancau/openclaw-feishu.git
+cd openclaw-feishu
+npm install -g .
 ```
 
-### 3. 配置
+> 仓库里已经带了编译好的 `dist/`，所以**不需要自己 build**，`npm install -g .` 会把插件连同运行依赖装到全局。
+> 如果你改了 TypeScript 源码，再执行 `npm install && npm run build` 重新编译即可（见下方「从源码构建」）。
 
-**推荐：直接编辑配置文件**（飞书为插件通道，CLI 向导可能不包含 openclaw-feishu，请改配置文件）。
+### 第 3 步：配置 OpenClaw
 
-编辑 `~/.openclaw/openclaw.json`，在 `channels` 下增加 `openclaw-feishu`，并确保插件已启用：
+编辑 `~/.openclaw/openclaw.json`（Windows 是 `C:\Users\你的用户名\.openclaw\openclaw.json`），
+加入下面两段（注意通道名是 **`openclaw-feishu`**）：
 
 ```json
 {
@@ -54,66 +79,85 @@ openclaw plugins install openclaw-feishu
 }
 ```
 
-注意：**appId、appSecret 必须写在 `channels.openclaw-feishu` 下**，不要写在 `plugins.entries.openclaw-feishu` 里，否则可能触发配置校验报错。
+⚠️ **`appId` / `appSecret` 一定要写在 `channels.openclaw-feishu` 下面**，
+不要写进 `plugins.entries`，否则会触发配置校验报错。
 
-若希望用交互式向导，可先运行 `openclaw configure`，在通道相关步骤中如出现 Feishu 再按提示填写；若没有 Feishu 选项，仍请按上面方式编辑 `openclaw.json`。
-
-### 4. 启动
+### 第 4 步：启动
 
 ```bash
 openclaw gateway restart
 ```
 
-之后在飞书中找到你的机器人即可开始对话。
+然后在飞书里找到你的机器人：
+- **私聊**：直接发消息即可。
+- **群聊**：把机器人拉进群，然后 **@机器人** 提问（定制版群里只认 @）。
 
-## 群聊说明
+---
 
-群聊中机器人不会回复每一条消息（避免刷屏），只会在以下情况回复：
+## 📁 文件 / 图片 / 富文本（定制版功能）
 
-- 被 @
-- 消息以问号结尾
-- 消息包含「帮」「请」「怎么」等求助词
+- 在私聊里**直接把文件拖给机器人**，它会自动下载并把内容读给 AI：
+  - 文本/代码/CSV/JSON/Markdown 等：直接读取（超长会截断到 5 万字符）。
+  - **PDF**：自动提取文字（扫描件无文字时会提示）。
+  - 其他类型：保存到临时目录并告知路径。
+- **图片**：会以 `[用户发送了一张图片 …]` 的占位文本传给 AI。
+- **富文本消息**：自动提取其中的纯文字。
 
-## 常见问题
+> 临时文件存放在系统临时目录下的 `openclaw-feishu-files/`。
 
-**Q: 机器人收不到消息？**
+---
 
-检查：① 应用已发布上线（非草稿）；② 事件订阅选择的是「长连接」而非 webhook；③ 上述权限均已开启。
+## 🛠 从源码构建（改代码时才需要）
 
-**Q: 群聊里不回复？**
+```bash
+npm install        # 安装依赖（含 TypeScript）
+npm run build      # tsc 编译，输出到 dist/
+npm install -g .   # 重新全局安装
+openclaw gateway restart
+```
 
-尝试 @ 机器人，或在消息末尾加问号。
+源码结构（`src/`）：
 
-**Q: 如何查看飞书通道状态？**
+| 文件 | 作用 |
+|------|------|
+| `channel.ts` | 通道 + Dock 注册（核心） |
+| `receive.ts` | **接收消息、文件/图片/富文本处理、分发给 AI**（定制重点） |
+| `group-filter.ts` | 群聊是否回复的判断（定制：只认 @） |
+| `send.ts` / `media.ts` | 发送文本与媒体 |
+| `accounts.ts` | 多账号解析 |
+| `onboarding.ts` | 配置向导 |
+| `probe.ts` / `status-issues.ts` | 健康检查与诊断 |
+| `types.ts` | 类型定义 + `FEISHU_CHANNEL_ID` 常量 |
 
+---
+
+## ❓ 常见问题
+
+**机器人收不到消息？**
+检查：① 应用已**发布上线**（不是草稿）；② 事件订阅选的是「**长连接**」而不是 webhook；③ 上面列的权限都开了。
+
+**群聊里机器人不理我？**
+本定制版群聊**只在 @ 到机器人本人时**才回复，请直接 @机器人。
+（启动日志里会打印 `Bot open_id resolved: ...`，群消息进来时也会打印 `Group filter: ...` 方便排查。）
+
+**文件发了没反应？**
+确认开通了 `im:resource` 权限；日志里搜 `Received file` / `Downloaded file` 看下载是否成功。
+
+**怎么看通道状态？**
 ```bash
 openclaw channels status openclaw-feishu
 ```
 
-**Q: 报错 Config validation failed: plugins.entries.feishu: plugin not found: feishu？**
+**插件没被加载？**
+确认 `plugins.entries.openclaw-feishu.enabled` 为 `true`，且 `npm install -g .` 成功（`npm ls -g openclaw-feishu` 能看到）。重启网关后看启动日志里是否有 `Starting Feishu provider`。
 
-OpenClaw 的 `plugins.entries` 里只能填**插件 id**（如 `openclaw-feishu`），不能填旧的 channel id（`feishu`）。若配置里误多了 `plugins.entries.feishu`，删掉即可。在仓库根目录执行：`./scripts/fix-plugins-entries.sh`，或手动编辑 `~/.openclaw/openclaw.json` 删除 `plugins.entries.feishu` 整项，只保留 `plugins.entries.openclaw-feishu`。通道配置请使用 `channels.openclaw-feishu`。
-
-**Q: iMessage 日志里报 permissionDenied / authorization denied (code: 23) 或 "permission"... is not valid JSON？**
-
-这是 macOS 未允许当前进程读取 iMessage 数据库。解决：**系统设置 → 隐私与安全性 → 完全磁盘访问权限** 里添加**实际运行网关的程序**（在终端跑就加「终端」，以后台服务跑就加「Node」）。添加后关掉该程序再重新打开，并执行 `openclaw gateway restart`。
-
-## 附：一键安装配置 iMessage 通道（可选）
-
-若希望 OpenClaw 同时接入 iMessage（仅 macOS），可在本仓库根目录执行：
-
-```bash
-./scripts/setup-imessage.sh
-```
-
-脚本会：安装 [imsg](https://github.com/steipete/imsg)（`brew install steipete/tap/imsg`）、将 `channels.imessage` 写入 `~/.openclaw/openclaw.json`。完成后**必须**在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中添加**运行网关的进程**（在终端跑就加「终端」，以后台服务跑就加「Node」），否则会报 `permissionDenied` / `authorization denied (code: 23)` 且日志里出现 `is not valid JSON`（imsg 返回了权限错误文本）。添加后重启网关，私聊需配对：`openclaw pairing list imessage` → `openclaw pairing approve imessage <CODE>`。
+---
 
 ## 链接
 
-- [OpenClaw 文档](https://docs.openclaw.ai)
 - [飞书开放平台文档](https://open.feishu.cn/document/home/index)
-- [问题反馈](https://github.com/AlexAnys/openclaw-feishu/issues)
+- 官方上游：[hgkdzbf6/openclaw-feishu](https://github.com/hgkdzbf6/openclaw-feishu)
 
 ## 协议
 
-MIT
+MIT（沿用上游）

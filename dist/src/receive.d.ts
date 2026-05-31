@@ -18,8 +18,14 @@ export type FeishuProviderOptions = {
     abortSignal?: AbortSignal;
     statusSink?: (patch: Record<string, unknown>) => void;
 };
-/** Start the Feishu WebSocket provider. Returns a stop function. */
-export declare function startFeishuProvider(options: FeishuProviderOptions): {
+/**
+ * Start the Feishu WebSocket provider.
+ *
+ * Resolves the bot's own open_id (for group @-mention filtering), starts the
+ * WSClient, then stays alive until the abort signal fires. Returns a stop
+ * function once aborted.
+ */
+export declare function startFeishuProvider(options: FeishuProviderOptions): Promise<{
     stop: () => void;
-};
+}>;
 //# sourceMappingURL=receive.d.ts.map

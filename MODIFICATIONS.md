@@ -1,48 +1,50 @@
-# 本地修改说明（基于 openclaw-feishu 0.1.4）
+# 定制改动说明（基于 openclaw-feishu 0.1.4）
 
-本仓库是 [`openclaw-feishu`](https://github.com/hgkdzbf6/openclaw-feishu) 插件 **0.1.4** 版本的本地定制版。
-代码为已编译的 `dist/` 产物，并在其基础上直接修改（无 TypeScript 源码）。
+本仓库基于官方 [`openclaw-feishu`](https://github.com/hgkdzbf6/openclaw-feishu) **0.1.4** 定制。
+与早期「直接改编译产物」的做法不同，本仓库是**完整 TypeScript 源码**，可 `npm run build` 重新构建，
+方便维护与跟上游合并。
 
-相对官方 0.1.4 的全部改动见 [`modifications-vs-0.1.4.patch`](./modifications-vs-0.1.4.patch)。
-共改动两个文件：`dist/src/group-filter.js`、`dist/src/receive.js`。
+## 基线说明
 
-## 1. `dist/src/group-filter.js` — 群聊回复策略
+- 官方源码仓库 main 分支当前为 **0.1.3**，但 npm 发布的是 **0.1.4**。
+- 0.1.3 → 0.1.4 的唯一改动是一次重构：新增 `FEISHU_CHANNEL_ID = "openclaw-feishu"` 常量，
+  把各处硬编码的通道 id `"feishu"` 全部替换为它（**通道 id 从 `feishu` 改为 `openclaw-feishu`**）。
+- 本仓库以 0.1.3 源码为底，**先复刻了 0.1.4 的 id 重构**，再叠加下述定制功能。
+- 构建产物已与「线上运行的 0.1.4 + 定制」逐文件比对验证：13 个文件中 11 个字节级一致，
+  其余 2 个（`group-filter`、`receive`）仅格式/注释不同，逻辑等价。
 
-- **原版**：根据问号、英文疑问词、中文请求动词（帮/请/麻烦…）、机器人名字称呼等启发式判断是否在群里回复。
-- **改后**：`shouldRespondInGroup` 简化为「仅当消息里有 @mention 时才回复」（`return mentions.length > 0`）。
+## 定制改动（相对官方 0.1.4）
 
-## 2. `dist/src/receive.js` — 接收与消息处理
+涉及两个源文件：`src/group-filter.ts`、`src/receive.ts`。
 
-1. **解析机器人自身 open_id**
-   `startFeishuProvider` 改为 `async`，启动时调用飞书
-   `auth/v3/tenant_access_token/internal` + `bot/v3/info/` 接口拿到机器人自己的
-   `open_id`，存入 `botOpenId`，供群聊 @ 判断使用。
+### 1. `src/group-filter.ts` — 群聊回复策略
 
-2. **修复「channel exited」启动即退出**
-   原函数同步返回，框架会判定 channel 已退出。改为在收到 `abortSignal`
-   之前一直 `await` 挂起，保持长连接存活，abort 时再 `stop()`。
+- **官方**：根据问号、英文疑问词、中文求助动词、机器人名字称呼等启发式判断是否回复。
+- **定制**：`shouldRespondInGroup` 简化为「**仅当存在 @mention 时**」。
+  真正「是否 @ 到机器人本人」的判断移到 `receive.ts` 里用 bot 自己的 `open_id` 精确比对。
 
-3. **群聊精确 @ 判断**
-   不再依赖文本启发式，改为比对 mention 的 `open_id` 是否等于机器人自己的
-   `botOpenId`，命中才回复，否则忽略。
+### 2. `src/receive.ts` — 接收与消息处理
 
-4. **支持更多消息类型**（原版仅 `text`）
-   现支持 `text` / `file` / `post`（富文本）/ `image`：
-   - `file`：调用新增的 `downloadAndExtractFeishuFile()` 下载并提取文本。
-   - `post`：调用新增的 `extractTextFromPost()` 提取纯文字。
-   - `image`：以占位文本 `[用户发送了一张图片 (image_key=...)]` 传入。
+1. **解析机器人自身 open_id**：`startFeishuProvider` 改为 `async`，启动时调用飞书
+   `auth/v3/tenant_access_token/internal` + `bot/v3/info/`，拿到机器人自己的 `open_id`（`botOpenId`）。
 
-5. **新增 `downloadAndExtractFeishuFile()`**
-   通过 `im/v1/messages/{id}/resources/{file_key}` 下载文件到临时目录，按扩展名提取：
-   - 文本/代码类（txt/md/csv/json/py/js/…）直接读取，超过 5万字符截断。
-   - `.pdf` 用 `pdf-parse` 提取文字（扫描件无文字时给出提示）。
-   - 其他类型仅保存并返回路径说明。
+2. **修复「channel exited」**：在收到 `abortSignal` 之前一直 `await` 挂起，保持长连接存活，
+   网关停止时再 `stop()`。
 
-6. **新增 `extractTextFromPost()`**
-   解析飞书富文本 post 结构（title + content 段落），提取 text/a/at 节点为纯文字。
+3. **群聊精确 @ 判断**：比对 mention 的 `open_id` 是否等于 `botOpenId`，命中才回复，否则忽略。
+   并打印 `Group filter: ...` 调试日志。
 
-7. **调试日志**：对每条进入的消息打印类型/id/内容片段，以及群聊 @ 判断的详细信息。
+4. **支持更多消息类型**（官方仅 `text`）：现支持 `text` / `file` / `post`（富文本）/ `image`。
 
-## 与官方版本同步
+5. **新增 `downloadAndExtractFeishuFile()`**：通过
+   `im/v1/messages/{id}/resources/{file_key}` 下载文件并按扩展名提取——
+   文本/代码类直接读（超 5 万字符截断），`.pdf` 用 `pdf-parse` 转文字，其它类型仅保存并返回路径。
 
-如需基于官方新版本重做这些改动，对照 `modifications-vs-0.1.4.patch` 重新应用即可。
+6. **新增 `extractTextFromPost()`**：从飞书富文本 post 结构（title + content 段落）提取纯文字。
+
+7. **调试日志**：打印每条进入消息的类型/id/内容片段。
+
+## 重新生成方式
+
+如需基于上游新版本重做：拉取上游源码，复刻 `FEISHU_CHANNEL_ID` 重构（若上游已自带则跳过），
+再把上面第 1、2 节的改动应用到 `group-filter.ts` 与 `receive.ts`，最后 `npm run build`。

@@ -2,8 +2,8 @@
  * Feishu channel plugin — type definitions.
  */
 /** Channel id used in openclaw.json channels.openclaw-feishu and plugin registration. */
-export declare const FEISHU_CHANNEL_ID: "openclaw-feishu";
-/** Per-account configuration stored in openclaw.json channels.openclaw-feishu */
+export declare const FEISHU_CHANNEL_ID = "openclaw-feishu";
+/** Per-account configuration stored in openclaw.json channels.feishu */
 export type FeishuAccountConfig = {
     /** Optional display name for this account. */
     name?: string;
@@ -24,7 +24,7 @@ export type FeishuAccountConfig = {
     /** Max inbound media size in MB. */
     mediaMaxMb?: number;
 };
-/** Top-level Feishu config section (channels.openclaw-feishu). */
+/** Top-level Feishu config section (channels.feishu). */
 export type FeishuConfig = {
     /** Multi-account map. */
     accounts?: Record<string, FeishuAccountConfig>;
