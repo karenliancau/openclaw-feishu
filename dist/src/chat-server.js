@@ -67,7 +67,16 @@ export function startChatServer(cfg, accountId, log) {
                 }
                 // Tell feishu-event's heartbeat loop we're alive and thinking.
                 emit({ type: "status", message: "thinking" });
-                const sessionKey = sessionId ?? `bridge-${Date.now()}`;
+                // sessionKey 必须是 receive.ts 同款的「结构化 channel:peer」形态。
+                // 网关 toAgentStoreSessionKey 对裸 key(如 bridge-<ts>) 分类不稳，会裂出
+                // `bridge-X` 与 `agent:main:bridge-X` 两份 → web UI 落后。统一加
+                // `openclaw-feishu:` 前缀后能干净规范成 agent:main:openclaw-feishu:<peer>，
+                // 每轮一致、不分裂。Python 会把返回的 sessionId round-trip 回来，
+                // 故第二轮起就稳定在该 key（含已带前缀者原样透传）。
+                const rawId = (sessionId ?? `bridge-${Date.now()}`).trim();
+                const sessionKey = rawId.startsWith(`${FEISHU_CHANNEL_ID}:`)
+                    ? rawId
+                    : `${FEISHU_CHANNEL_ID}:${rawId.replace(/^agent:[^:]+:/, "")}`;
                 let replyText = "";
                 // 真流式：累积已 emit 的文本，onPartialReply 只把「新增后缀」当 text_delta 推出去，
                 // 与 claude-bridge.mjs 的事件契约对齐，Python 侧 StreamAccumulator 零改动即可消费。
