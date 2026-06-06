@@ -10,7 +10,7 @@ import { feishuOnboardingAdapter } from "./onboarding.js";
 import { probeFeishu } from "./probe.js";
 import { sendTextMessage, sendMediaMessage } from "./send.js";
 import { collectFeishuStatusIssues } from "./status-issues.js";
-import { startFeishuProvider } from "./receive.js";
+import { startChatServer } from "./chat-server.js";
 import * as Lark from "@larksuiteoapi/node-sdk";
 const meta = {
     id: FEISHU_CHANNEL_ID,
@@ -359,18 +359,32 @@ export const feishuPlugin = {
             catch {
                 // Ignore probe errors during startup
             }
-            ctx.log?.info(`[${account.accountId}] Starting Feishu provider${feishuBotLabel}`);
-            const provider = startFeishuProvider({
-                account,
-                config: ctx.cfg,
-                log: {
-                    info: (msg) => ctx.log?.info(msg),
-                    error: (msg) => ctx.log?.error(msg),
-                },
-                abortSignal: ctx.abortSignal,
-                statusSink: (patch) => ctx.setStatus({ accountId: ctx.accountId, ...patch }),
+            ctx.log?.info(`[${account.accountId}] Starting OpenClaw HTTP bridge${feishuBotLabel}`);
+            const server = startChatServer(ctx.cfg, account.accountId, {
+                info: (msg) => ctx.log?.info(msg),
+                error: (msg) => ctx.log?.error(msg),
             });
-            return provider;
+            ctx.setStatus({ accountId: account.accountId, running: true, lastStartAt: Date.now() });
+            const stop = () => {
+                server.close();
+                ctx.setStatus({ accountId: account.accountId, running: false, lastStopAt: Date.now() });
+            };
+            // Keep the channel alive until the abort signal fires. Without this the
+            // gateway sees startAccount return immediately, treats the channel as
+            // exited, and triggers an auto-restart loop (which then collides on the
+            // bridge port). Mirror the original WS provider's keep-alive pattern.
+            const abortSignal = ctx.abortSignal;
+            if (abortSignal) {
+                await new Promise((resolve) => {
+                    if (abortSignal.aborted) {
+                        resolve();
+                        return;
+                    }
+                    abortSignal.addEventListener("abort", () => resolve(), { once: true });
+                });
+                stop();
+            }
+            return { stop };
         },
     },
 };
